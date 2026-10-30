@@ -1,0 +1,656 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JKD передня рука 3D</title>
+<style>
+  :root { --bg:#14161a; --panel:#1d2026; --line:#2e333b; --text:#e8eaee; --muted:#9aa3ad; --lead:#ff9a3c; --rear:#4da3ff; --hit:#ffd23f; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 system-ui, "Segoe UI", sans-serif; }
+  header { padding:10px 16px; border-bottom:1px solid var(--line); display:flex; gap:12px; align-items:baseline; flex-wrap:wrap; }
+  header h1 { font-size:17px; margin:0; }
+  header span { color:var(--muted); font-size:12px; }
+  main { display:grid; grid-template-columns:1fr 370px; height:calc(100vh - 45px); }
+  #view { position:relative; min-height:320px; }
+  #view canvas { display:block; width:100%; height:100%; }
+  aside { background:var(--panel); border-left:1px solid var(--line); overflow:auto; padding:12px 14px; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
+  button { background:#272b33; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px 10px; cursor:pointer; font:inherit; font-size:13px; }
+  button.on { background:#3a3220; border-color:var(--lead); }
+  label { color:var(--muted); font-size:12px; display:block; margin:6px 0 2px; }
+  input[type=range] { width:100%; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:14px 0 6px; }
+  ol { margin:0; padding-left:20px; }
+  ol li { margin:3px 0; color:var(--muted); }
+  ol li.cur { color:var(--text); font-weight:600; }
+  .note { font-size:12px; color:var(--muted); background:#22262d; border-left:3px solid var(--lead); padding:6px 8px; margin:6px 0; }
+  .stats div { display:flex; justify-content:space-between; font-variant-numeric:tabular-nums; }
+  .bar { height:8px; background:var(--rear); border-radius:4px; overflow:hidden; margin-top:3px; }
+  .bar i { display:block; height:100%; background:var(--lead); }
+  #phase { position:absolute; left:12px; right:12px; bottom:12px; background:rgba(20,22,26,.85); border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:14px; }
+  #tag { position:absolute; pointer-events:none; background:var(--hit); color:#111; font-size:12px; font-weight:600; padding:2px 6px; border-radius:4px; display:none; white-space:nowrap; }
+  @media (max-width: 800px) { main { grid-template-columns:1fr; grid-template-rows:60vh auto; height:auto; } aside { border-left:0; border-top:1px solid var(--line); } }
+</style>
+</head>
+<body>
+<header><h1>Передня рука: джеб → довгий хук → прямий по супернику — 3D за книгами</h1><span>Миша: ліва кнопка — обертати, колесо — масштаб. Телефон: один палець — обертати, два — масштаб. Помаранчевий — права (передня) сторона, синій — ліва (задня).</span></header>
+<main>
+  <div id="view"><div id="tag"></div><div id="phase"></div></div>
+  <aside>
+    <h2>Ціль</h2>
+    <div class="row">
+      <button data-tg="opp" class="on">Суперник</button><button data-tg="mitt">Лапа</button><button data-tg="bag">Груша</button>
+    </div>
+    <h2>Відтворення</h2>
+    <div class="row">
+      <button id="play">⏸ Пауза</button><button id="restart">⟲ Спочатку</button>
+      <button id="loop" class="on">Повтор</button><button id="snd" class="on">🔊 Звук</button>
+    </div>
+    <label>Швидкість: <b id="spdv">0.25×</b></label>
+    <input id="spd" type="range" min="0.05" max="1" step="0.05" value="0.25">
+    <label>Час (перетягніть, щоб зупинити на фазі)</label>
+    <input id="time" type="range" min="0" max="1" step="0.001" value="0">
+    <h2>Камера</h2>
+    <div class="row">
+      <button data-cam="side">Збоку</button><button data-cam="top">Згори</button>
+      <button data-cam="back">Ззаду (як ваше відео)</button><button data-cam="front">Спереду</button>
+      <button data-cam="fist">Кулак крупно</button><button data-cam="opp">Очима суперника</button>
+    </div>
+    <h2>Що відбувається</h2>
+    <ol id="steps"></ol>
+    <h2>Цифри зараз</h2>
+    <div class="stats">
+      <div><span>Лікоть: передня рука</span><b id="s-er"></b></div>
+      <div><span>Лікоть: задня рука</span><b id="s-el"></b></div>
+      <div><span>Коліно задньої ноги</span><b id="s-kn"></b></div>
+      <div><span>Поворот стегон / плечей</span><b id="s-rot"></b></div>
+      <div><span>Сила удару (пік)</span><b id="s-f">—</b></div>
+      <div><span id="s-tgt">Голова суперника: зсув / поворот</span><b id="s-head"></b></div>
+    </div>
+    <h2>Кулак і лікоть за книгами</h2>
+    <div class="note"><b>Кулак:</b> вертикальний, великий палець угору, лежить на середніх фалангах вказівного й середнього пальців. Б'ють <b>3 нижні кісточки</b> (середній, безіменний, мізинець) — від плеча до кісточки мізинця йде пряма «лінія сили» (Straight Lead, стор. 52–53, 73). Зап'ястя не гнеться (Tao 129). Жовтим світяться саме ці кісточки.</div>
+    <div class="note"><b>Джеб:</b> лікоть притиснутий; у момент дотику до цілі лікоть ще не випрямлений — лишається 8–10 см (Straight Lead, стор. 89), рука добиває крізь ціль.</div>
+    <div class="note"><b>Довгий хук:</b> з прямого одразу дуга збоку, рука пряміша, ніж у короткого. Лікоть піднімається в останню мить (Tao 127, 131).</div>
+    <div class="note"><b>Прямий передньою (сильний):</b> рука рушає раніше за ногу, крок поштовхом задньої ноги, стегно повертається, кулак вертикальний, б'ють 3 нижні кісточки; назад тим самим шляхом (Straight Lead, стор. 52–60, 89). Задня рука весь час біля підборіддя.</div>
+    <div class="note"><b>Суперник:</b> голова на пружній «шиї». Кулак не проходить крізь неї: удар штовхає голову й розвертає її — видно, куди прийшов удар і куди летить голова. Жовті мітки — цілі: підборіддя (джеб, прямий) і бік щелепи (хук); у момент влучання мітка червоніє. Звук вмикається після першого натискання кнопки.</div>
+    <div class="note">Рух задано ключовими позами за описом із книг — кути й час приблизні.</div>
+  </aside>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+const V = (x, y, z) => new THREE.Vector3(x, y, z);
+const UP = V(0, 1, 0);
+const RAD = Math.PI / 180;
+const ARM = [0.29, 0.26], LEG = [0.46, 0.45], FIST = 0.10;      // FIST — від зап'ястя до кісточок
+const HEAD0 = V(0.57, 1.50, -0.05), HEAD_R = 0.105;           // голова суперника (він трохи пригнувся)
+const onHead = (x, y, z) => HEAD0.clone().add(V(x, y, z).normalize().multiplyScalar(HEAD_R));
+const CHIN = onHead(-0.85, -0.5, 0);                            // підборіддя — ціль прямих
+const JAW = onHead(-0.5, -0.45, 0.74);                          // лівий бік щелепи суперника — ціль хука
+
+// ---------- ключові пози ----------
+// rk / lk — куди дивляться КІСТОЧКИ правої (передньої) / лівої (задньої) руки:
+//   tgt [x,y,z] від свого плеча (осі світу), loc [вперед, вгору, вправо] від шиї в системі плечей, w — точка у світі.
+// pole — куди дивиться лікоть; roll — поворот кулака (0 — вертикальний, великий палець угору).
+const GUARD_R = { tgt: [0.36, -0.04, -0.03], pole: [0, -1, 0.5], roll: 0 };
+const GUARD_L = { loc: [0.22, 0.08, 0.05], pole: [0, -1, -0.6], roll: 0 };
+function stance(X) {
+  return { px: X, py: 0.93, pz: 0, hip: 45, chest: 50, lean: 0.04,
+    ff: { x: X + 0.32, z: 0.06, yaw: 20, heel: 0, lift: 0 }, rf: { x: X - 0.30, z: -0.14, yaw: 40, heel: 25, lift: 0 },
+    rk: GUARD_R, lk: GUARD_L };
+}
+function K(base, t, o = {}) {
+  const k = JSON.parse(JSON.stringify(base));
+  for (const [key, val] of Object.entries(o)) {
+    if (key === "ff" || key === "rf") Object.assign(k[key], val); else k[key] = val;
+  }
+  k.t = t; return k;
+}
+function buildKeys() {
+  const P = -0.40, F0 = P + 0.32, R0 = P - 0.30, b = stance(P), ks = [];
+  const add = (t, o) => ks.push(K(b, t, o));
+  const ff = (dx, o = {}) => Object.assign({ x: F0 + dx, lift: 0 }, o);
+  const rf = (dx, o = {}) => Object.assign({ x: R0 + dx, lift: 0 }, o);
+  const chin = d => ({ w: [CHIN.x + d, CHIN.y, CHIN.z], pole: [0, -1, 0.4], roll: 0 });
+  add(0, { say: "Стійка: передня рука на лінії до цілі, задня біля підборіддя, задня п'ята піднята." });
+  add(0.25);
+  // джеб з підшагом: рука → передня нога → задня нога (три точки приземлення)
+  add(0.30, { hip: 52, chest: 56, rk: { tgt: [0.48, -0.03, -0.04], pole: [0, -1, 0.35], roll: 0 },
+    say: "Джеб: рука рушає першою, ноги ще стоять. «Рука раніше за ногу — завжди». Straight Lead 78" });
+  add(0.335, { px: P + 0.05, py: 1.00, hip: 64, chest: 68, ff: ff(0.06, { lift: 0.035 }), rf: rf(0, { heel: 40 }), rk: chin(-0.07),
+    say: "Поштовх задньою ногою: вона розгинається в коліні й штовхає тіло вперед; передня летить низько над підлогою. Arsenal 58" });
+  add(0.36, { px: P + 0.10, py: 1.03, hip: 70, chest: 74, lean: 0.06, ff: ff(0.10, { lift: 0.012 }), rf: rf(0, { heel: 32 }), rk: chin(0), tag: "джеб · підборіддя",
+    say: "1-ша точка: кулак у цілі раніше, ніж стала передня нога; лікоть ще не випрямлений. Straight Lead 89, 98–99" });
+  add(0.375, { px: P + 0.12, py: 0.99, hip: 74, chest: 78, lean: 0.07, ff: ff(0.11), rf: rf(0, { heel: 42 }), rk: chin(0.06),
+    say: "2-га точка: передня нога стає на підлогу. Straight Lead 99" });
+  add(0.39, { px: P + 0.13, hip: 76, chest: 80, lean: 0.07, ff: ff(0.11), rf: rf(0.05, { heel: 35, lift: 0.02 }), rk: chin(0.10),
+    say: "Крізь ціль, задня нога ковзає слідом." });
+  add(0.415, { px: P + 0.13, hip: 70, chest: 74, ff: ff(0.11), rf: rf(0.11), rk: { w: [CHIN.x - 0.03, 1.45, 0.14], pole: [0.2, -0.6, 1], roll: 0 },
+    say: "3-тя точка: задня нога стала — стійка відновлена. Straight Lead 100" });
+  // довгий хук — з місця, на розвороті стоп
+  add(0.45, { px: P + 0.14, hip: 66, chest: 72, ff: ff(0.11), rf: rf(0.11), rk: { w: [CHIN.x - 0.08, 1.45, 0.30], pole: [0.2, -0.4, 1], roll: 0 },
+    say: "Довгий хук: рука не повертається до підборіддя — з прямого одразу виводимо дугу збоку. Tao 127" });
+  add(0.49, { px: P + 0.14, hip: 86, chest: 74, ff: ff(0.11, { heel: 25, yaw: 50 }), rf: rf(0.11, { heel: 8, yaw: 66 }),
+    rk: { w: [CHIN.x - 0.01, 1.45, 0.24], pole: [0.3, 0, 1], roll: 0 },
+    say: "Стегно рушає першим, рука відстає — у плечі натяг. Розворот на стопах. Arsenal 89, 94–95" });
+  add(0.53, { px: P + 0.13, hip: 100, chest: 92, ff: ff(0.11, { heel: 35, yaw: 62 }), rf: rf(0.11, { heel: 0, yaw: 82 }),
+    rk: { w: [JAW.x, JAW.y, JAW.z], pole: [0.4, 0.2, 1], roll: 0 }, tag: "довгий хук · бік щелепи",
+    say: "Удар збоку: лікоть піднімається в останню мить, кулак вертикальний, рука пряміша, ніж у короткого хука. Tao 131, Arsenal 101" });
+  add(0.565, { px: P + 0.12, hip: 106, chest: 100, ff: ff(0.11, { heel: 35, yaw: 64 }), rf: rf(0.11, { heel: 0, yaw: 84 }),
+    rk: { w: [JAW.x + 0.02, JAW.y, JAW.z - 0.09], pole: [0.4, 0.2, 1], roll: 0 },
+    say: "Крізь ціль ~9 см, вага переходить на задню ногу. Arsenal 97, Tao 127" });
+  add(0.62, { px: P + 0.12, hip: 108, chest: 108, ff: ff(0.11, { heel: 30, yaw: 62 }), rf: rf(0.11, { heel: 0, yaw: 82 }),
+    rk: { w: [CHIN.x - 0.16, 1.36, -0.18], pole: [0.3, 0, 1], roll: 0 },
+    say: "«Зрив»: рука йде далі по дузі — ціль розвертається. Arsenal 97" });
+  add(0.68, { px: P + 0.12, hip: 92, chest: 95, ff: ff(0.11, { heel: 20, yaw: 50 }), rf: rf(0.11, { heel: 6, yaw: 70 }),
+    rk: { loc: [0.24, -0.12, 0.04], pole: [0, -1, 0.5], roll: 0 },
+    say: "Рука закінчує біля корпусу." });
+  // крок назад, щоб відновити дистанцію для прямого
+  add(0.72, { px: P + 0.08, ff: ff(0.11), rf: rf(0.01, { lift: 0.025 }),
+    say: "Крок назад (зворотний step and slide): спершу задня нога… Arsenal 51" });
+  add(0.76, { px: P + 0.03, ff: ff(0.01), rf: rf(0.01),
+    say: "…потім передня — дистанцію відновлено, рука вже в стійці." });
+  // сильний прямий передньою — знову з підшагом
+  add(0.80, { px: P + 0.03, hip: 52, chest: 56, ff: ff(0.01), rf: rf(0.01), rk: { tgt: [0.48, -0.03, -0.04], pole: [0, -1, 0.35], roll: 0 },
+    say: "Прямий передньою: рука рушає першою. Straight Lead" });
+  add(0.835, { px: P + 0.06, py: 1.00, hip: 66, chest: 70, ff: ff(0.07, { lift: 0.035 }), rf: rf(0.01, { heel: 40 }), rk: chin(-0.07),
+    say: "Сильний поштовх: задня нога повністю розгинається — уся вага летить уперед. Arsenal 58" });
+  add(0.86, { px: P + 0.10, py: 1.03, hip: 78, chest: 82, lean: 0.07, ff: ff(0.11, { lift: 0.012 }), rf: rf(0.01, { heel: 32 }), rk: chin(0), tag: "прямий · підборіддя",
+    say: "Кулак у цілі раніше за передню ногу; стегно повернуте, кулак вертикальний. Straight Lead 60, 98–99" });
+  add(0.875, { px: P + 0.12, py: 0.99, hip: 82, chest: 86, lean: 0.08, ff: ff(0.12), rf: rf(0.01, { heel: 42 }), rk: chin(0.06),
+    say: "Передня нога стала." });
+  add(0.89, { px: P + 0.13, hip: 82, chest: 86, lean: 0.08, ff: ff(0.12), rf: rf(0.06, { heel: 35, lift: 0.02 }), rk: chin(0.10),
+    say: "Крізь ціль, задня нога ковзає слідом." });
+  add(0.915, { px: P + 0.13, hip: 60, chest: 62, ff: ff(0.12), rf: rf(0.12), rk: { tgt: [0.34, -0.02, -0.03], pole: [0, -1, 0.5], roll: 0 },
+    say: "Задня нога стала, рука повертається тим самим шляхом, не опускається. Arsenal 75, 82" });
+  // після атаки — швидкий відхід назад
+  add(0.96, { px: P + 0.07, ff: ff(0.12), rf: rf(0.0, { lift: 0.03 }),
+    say: "Після атаки — швидкий відхід (push step назад): відштовхуємося передньою ногою, задня йде першою… Arsenal 52, Straight Lead 113" });
+  add(1.00, { px: P, ff: ff(0), rf: rf(0),
+    say: "…передня нога за нею — знову на безпечній дистанції, у стійці." });
+  add(1.15);
+  add(1.6);
+  return ks;
+}
+
+// ---------- тіло ----------
+function frame(a) { a *= RAD; return { F: V(Math.cos(a), 0, -Math.sin(a)), R: V(Math.sin(a), 0, Math.cos(a)) }; }
+function body(s) {
+  const P = V(s.px, s.py, s.pz), C = frame(s.chest), H = frame(s.hip);
+  const neck = P.clone().addScaledVector(UP, 0.48).addScaledVector(C.F, s.lean);
+  const sh = neck.clone().addScaledVector(UP, -0.03);
+  return { P, C, H, neck,
+    rS: sh.clone().addScaledVector(C.R, 0.19), lS: sh.clone().addScaledVector(C.R, -0.19),
+    rH: P.clone().addScaledVector(UP, -0.04).addScaledVector(H.R, 0.10),
+    lH: P.clone().addScaledVector(UP, -0.04).addScaledVector(H.R, -0.10) };
+}
+function handWorld(spec, b, side) {
+  if (spec.w) return V(...spec.w);
+  if (spec.tgt) return (side === "R" ? b.rS : b.lS).clone().add(V(...spec.tgt));
+  const [f, u, r] = spec.loc;
+  return b.neck.clone().addScaledVector(b.C.F, f).addScaledVector(UP, u).addScaledVector(b.C.R, r);
+}
+const SC = ["px", "py", "pz", "hip", "chest", "lean"], FT = ["x", "z", "yaw", "heel", "lift"];
+function keyVec(k) {
+  const b = body(k), r = handWorld(k.rk, b, "R"), l = handWorld(k.lk, b, "L");
+  return [...SC.map(n => k[n]), ...FT.map(n => k.ff[n]), ...FT.map(n => k.rf[n]),
+    r.x, r.y, r.z, l.x, l.y, l.z, ...k.rk.pole, ...k.lk.pole, k.rk.roll, k.lk.roll];
+}
+function unpack(v) {
+  const s = {}; SC.forEach((n, i) => s[n] = v[i]);
+  s.ff = {}; FT.forEach((n, i) => s.ff[n] = v[6 + i]);
+  s.rf = {}; FT.forEach((n, i) => s.rf[n] = v[11 + i]);
+  s.rk = V(v[16], v[17], v[18]); s.lk = V(v[19], v[20], v[21]);
+  s.rp = V(v[22], v[23], v[24]); s.lp = V(v[25], v[26], v[27]); s.rroll = v[28]; s.lroll = v[29];
+  return s;
+}
+function cr(p0, p1, p2, p3, u) {
+  const u2 = u * u, u3 = u2 * u;
+  return 0.5 * (2 * p1 + (-p0 + p2) * u + (2 * p0 - 5 * p1 + 4 * p2 - p3) * u2 + (-p0 + 3 * p1 - 3 * p2 + p3) * u3);
+}
+function sample(t) {
+  let i = 0;
+  while (i < keys.length - 2 && t > keys[i + 1].t) i++;
+  const t0 = keys[i].t, t1 = keys[i + 1].t, u = Math.min(1, Math.max(0, (t - t0) / (t1 - t0 || 1)));
+  const a = vecs[Math.max(0, i - 1)], b = vecs[i], c = vecs[i + 1], d = vecs[Math.min(vecs.length - 1, i + 2)];
+  return unpack(b.map((_, j) => cr(a[j], b[j], c[j], d[j], u)));
+}
+function ik(root, target, l1, l2, pole) {
+  const d = target.clone().sub(root); let dist = d.length();
+  const dir = d.normalize(); dist = Math.min(Math.max(dist, 0.05), l1 + l2 - 1e-4);
+  const along = (l1 * l1 + dist * dist - l2 * l2) / (2 * dist), h = Math.sqrt(Math.max(0, l1 * l1 - along * along));
+  const pd = pole.clone().addScaledVector(dir, -pole.dot(dir)).normalize();
+  return { mid: root.clone().addScaledVector(dir, along).addScaledVector(pd, h), end: root.clone().addScaledVector(dir, dist) };
+}
+// рука до кісточок: зап'ястя = кісточки − FIST уздовж передпліччя (2 ітерації)
+function armTo(shoulder, knuckle, pole) {
+  let dir = knuckle.clone().sub(shoulder).normalize(), r;
+  for (let i = 0; i < 2; i++) {
+    r = ik(shoulder, knuckle.clone().addScaledVector(dir, -FIST), ARM[0], ARM[1], pole);
+    dir = r.end.clone().sub(r.mid).normalize();
+  }
+  r.dir = dir; r.knuckle = r.end.clone().addScaledVector(dir, FIST);
+  return r;
+}
+function foot(f) {
+  const D = V(Math.cos(f.yaw * RAD), 0, -Math.sin(f.yaw * RAD)), h = f.heel * RAD, B = V(f.x, 0.03 + Math.max(0, f.lift), f.z);
+  return { D, toe: B.clone().addScaledVector(D, 0.07),
+    heel: B.clone().addScaledVector(D, -0.19 * Math.cos(h)).addScaledVector(UP, 0.19 * Math.sin(h)),
+    ankle: B.clone().addScaledVector(D, -0.14 * Math.cos(h)).addScaledVector(UP, 0.06 + 0.14 * Math.sin(h)) };
+}
+const angle = (a, b, c) => Math.round(a.clone().sub(b).angleTo(c.clone().sub(b)) / RAD);
+
+// ---------- сцена ----------
+const view = document.getElementById("view");
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(2, devicePixelRatio)); renderer.shadowMap.enabled = true;
+view.prepend(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x14161a);
+const cam = new THREE.PerspectiveCamera(40, 1, 0.02, 50);
+const ctl = new THREE.OrbitControls(cam, renderer.domElement);
+scene.add(new THREE.HemisphereLight(0xdde6ff, 0x30302a, 0.75));
+const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+sun.position.set(2, 4, 3); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024); scene.add(sun);
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(8, 8), new THREE.MeshStandardMaterial({ color: 0x24272d }));
+floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+scene.add(new THREE.GridHelper(8, 32, 0x3a3f48, 0x2c3037));
+const refLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([V(-1.4, 0.005, 0), V(0.58, 0.005, 0)]),
+  new THREE.LineDashedMaterial({ color: 0x8a8f98, dashSize: 0.05, gapSize: 0.04 }));
+refLine.computeLineDistances(); scene.add(refLine);
+
+const mat = c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.6, side: THREE.DoubleSide });
+const M = { lead: mat(0xff9a3c), rear: mat(0x4da3ff), body: mat(0xc9ced6), skin: mat(0xe7c9ab), skinD: mat(0xd2ad8b) };
+function cyl(r, m, r2) { const o = new THREE.Mesh(new THREE.CylinderGeometry(r2 ?? r, r, 1, 14), m); o.castShadow = true; scene.add(o); return o; }
+function ball(r, m) { const o = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 12), m); o.castShadow = true; scene.add(o); return o; }
+function setCyl(o, a, b) {
+  const d = b.clone().sub(a), L = d.length();
+  o.position.copy(a).addScaledVector(d, 0.5); o.scale.set(1, Math.max(L, 1e-3), 1);
+  o.quaternion.setFromUnitVectors(UP, d.normalize());
+}
+const parts = {
+  pelvis: new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.16, 0.30), M.body),
+  chest: new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.30, 0.36), M.body),
+  spine: cyl(0.07, M.body), neckB: cyl(0.045, M.body), head: ball(0.105, M.skin), nose: ball(0.025, M.skin),
+  rUp: cyl(0.045, M.lead), rLo: cyl(0.036, M.lead, 0.03), lUp: cyl(0.045, M.rear), lLo: cyl(0.036, M.rear, 0.03),
+  rTh: cyl(0.065, M.lead), rSh: cyl(0.05, M.lead), lTh: cyl(0.065, M.rear), lSh: cyl(0.05, M.rear),
+  rFoot: cyl(0.035, M.lead), lFoot: cyl(0.035, M.rear),
+  joints: Array.from({ length: 10 }, () => ball(0.05, M.body)),
+};
+["pelvis", "chest"].forEach(n => { parts[n].castShadow = true; scene.add(parts[n]); });
+
+// ---------- кулак з пальцями ----------
+// локальні осі: x — уперед (від зап'ястя до кісточок), y — бік великого пальця (вгору у вертикальному кулаці),
+// z — тильна сторона долоні. Пальці: 0 вказівний (згори) … 3 мізинець (знизу).
+function makeFist(sideSign) {
+  const g = new THREE.Group(), add = (geo, m, x, y, z) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = true; g.add(o); return o; };
+  add(new THREE.BoxGeometry(0.075, 0.086, 0.034), M.skin, 0.038, 0.0, 0.004);                  // долоня / п'ясток
+  const FY = [0.031, 0.011, -0.009, -0.028];
+  const glow = [];
+  FY.forEach((y, i) => {
+    const back = i === 3 ? 0.006 : 0;
+    const kn = add(new THREE.SphereGeometry(0.0135, 12, 8), new THREE.MeshStandardMaterial({ color: 0xe7c9ab, emissive: 0 }), 0.087 - back, y, 0.008);   // кісточка — найдальша точка
+    const pr = add(new THREE.BoxGeometry(0.020, 0.0175, 0.036), M.skin, 0.074 - back, y, -0.016);                                   // основна фаланга — позаду кісточок
+    add(new THREE.BoxGeometry(0.034, 0.0165, 0.018), M.skinD, 0.052 - back, y, -0.036);         // середня фаланга (загнута до долоні)
+    if (i > 0) glow.push(kn);                                                                 // 3 нижні кісточки
+  });
+  const th = new THREE.Mesh(new THREE.CylinderGeometry(0.0105, 0.012, 0.058, 10), M.skinD);       // великий палець поперек
+  th.position.set(0.052, 0.036, -0.036); th.rotation.z = -1.15; th.rotation.x = 0.35; th.castShadow = true; g.add(th);
+  g.scale.z = sideSign;                                                                            // ліва рука — дзеркально
+  g.userData.glow = glow; scene.add(g); return g;
+}
+const rFist = makeFist(1), lFist = makeFist(-1);
+function placeFist(g, wrist, dir, roll, side) {
+  let t = UP.clone().addScaledVector(dir, -UP.dot(dir));
+  if (t.lengthSq() < 1e-4) t = V(0, 0, 1);
+  t.normalize().applyAxisAngle(dir, roll * RAD * (side === "R" ? -1 : 1));
+  const s = dir.clone().cross(t);
+  g.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(dir, t, s));
+  g.position.copy(wrist);
+}
+function glowFist(g, on) { g.userData.glow.forEach(o => o.material.emissive.setHex(on ? 0xffb400 : 0)); }
+
+// ---------- суперник ----------
+// стоїть обличчям до бійця (дивиться в −x), у невисокій стійці; руки опущені, щоб удари проходили.
+const OM = { body: mat(0x5b6270), skin: mat(0xc99c7c), dark: new THREE.MeshStandardMaterial({ color: 0x2b2f36 }) };
+const oPelvis = V(0.80, 0.92, -0.05), oNeck = V(0.64, 1.36, -0.05);
+const opp = { torso: new THREE.Group(), head: new THREE.Group() };
+scene.add(opp.torso); scene.add(opp.head);
+(function buildOpp() {
+  const add = (g, mesh) => { mesh.castShadow = true; g.add(mesh); return mesh; };
+  const chest = add(opp.torso, new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.32, 0.38), OM.body));
+  chest.position.copy(oNeck).add(V(0.05, -0.19, 0)); chest.rotation.z = 0.25;
+  const pel = add(opp.torso, new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 0.32), OM.dark)); pel.position.copy(oPelvis);
+  const seg = (g, a, b, r, m) => { const o = add(g, new THREE.Mesh(new THREE.CylinderGeometry(r, r, 1, 12), m)); setCyl(o, a, b); return o; };
+  seg(opp.torso, oPelvis, chest.position, 0.07, OM.body);
+  // ноги: передня (ближче до бійця) і задня
+  [[V(0.80, 0.88, 0.05), V(0.68, 0.48, 0.10), V(0.58, 0.08, 0.10)], [V(0.80, 0.88, -0.15), V(0.95, 0.48, -0.20), V(1.08, 0.08, -0.22)]]
+    .forEach(([h, k, a]) => { seg(opp.torso, h, k, 0.065, OM.dark); seg(opp.torso, k, a, 0.05, OM.dark); });
+  // руки опущені до живота
+  [[V(0.66, 1.33, 0.14), V(0.60, 1.10, 0.22), V(0.48, 1.12, 0.16)], [V(0.66, 1.33, -0.24), V(0.62, 1.10, -0.32), V(0.50, 1.10, -0.26)]]
+    .forEach(([s, e, w]) => { seg(opp.torso, s, e, 0.045, OM.body); seg(opp.torso, e, w, 0.038, OM.body);
+      const f = add(opp.torso, new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 8), OM.dark)); f.position.copy(w); });
+  // голова: обличчя — у бік бійця (−x)
+  const head = add(opp.head, new THREE.Mesh(new THREE.SphereGeometry(HEAD_R, 24, 16), OM.skin));
+  head.scale.set(0.95, 1.08, 0.92);
+  const nose = add(opp.head, new THREE.Mesh(new THREE.SphereGeometry(0.02, 10, 8), OM.skin)); nose.position.set(-0.102, 0.0, 0);
+  [-0.035, 0.035].forEach(z => { const e = add(opp.head, new THREE.Mesh(new THREE.SphereGeometry(0.012, 8, 6), OM.dark)); e.position.set(-0.092, 0.03, z); });
+})();
+const oNeckMesh = cyl(0.05, OM.skin);
+// мітки цілей на голові: підборіддя і лівий бік щелепи суперника
+function marker(p) {
+  const m = new THREE.Mesh(new THREE.CircleGeometry(0.022, 20), new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
+  const n = p.clone().sub(HEAD0).normalize();
+  m.position.copy(p.clone().sub(HEAD0).addScaledVector(n, 0.004)); m.lookAt(m.position.clone().add(n));
+  opp.head.add(m); return m;
+}
+const marks = { chin: marker(CHIN), jaw: marker(JAW) };
+
+// ---------- цілі: суперник / лапа / груша ----------
+// у всіх цілей однакові точки удару: CHIN (прямі) і JAW (хук). Кожна ціль: contact → сила, step → фізика, solid → кулак не проходить.
+const smooth = (a, b, x) => { const u = Math.min(1, Math.max(0, (x - a) / (b - a))); return u * u * (3 - 2 * u); };
+const qFromRot = r => { const a = r.length(); return a > 1e-6 ? new THREE.Quaternion().setFromAxisAngle(r.clone().divideScalar(a), a) : new THREE.Quaternion(); };
+// пружне тіло зі сферою контакту: зсув d і поворот rot (малі кути) навколо базового положення base()
+function springSphere(o) {
+  const st = { d: V(0, 0, 0), v: V(0, 0, 0), rot: V(0, 0, 0), w: V(0, 0, 0) };
+  o.st = st;
+  o.reset = () => { st.d.set(0, 0, 0); st.v.set(0, 0, 0); st.rot.set(0, 0, 0); st.w.set(0, 0, 0); };
+  o.center = () => o.base().add(st.d);
+  o.contact = (k, vel) => {
+    const H = o.center(), r = k.clone().sub(H), dist = r.length();
+    if (dist >= o.R || dist < 1e-6) return null;
+    const n = r.divideScalar(dist), depth = o.R - dist, vn = vel.dot(n);
+    const Fn = Math.max(0, o.KC * depth - o.DC * vn), F = n.clone().multiplyScalar(-Fn);
+    const vt = vel.clone().addScaledVector(n, -vn);
+    if (vt.length() > 1e-3) F.addScaledVector(vt.normalize(), o.MU * Fn);
+    return { F, at: H.clone().addScaledVector(n, o.R), H, Fn };
+  };
+  o.step = (h, F, at, H) => {
+    const a = (F ? F.clone() : V(0, 0, 0)).addScaledVector(st.d, -o.K).addScaledVector(st.v, -o.C).divideScalar(o.M);
+    st.v.addScaledVector(a, h); st.d.addScaledVector(st.v, h);
+    if (st.d.length() > 0.22) st.d.setLength(0.22);
+    const tq = F ? at.clone().sub(H).cross(F) : V(0, 0, 0);
+    const al = tq.addScaledVector(st.rot, -o.RK).addScaledVector(st.w, -o.RC).divideScalar(o.I);
+    st.w.addScaledVector(al, h); st.rot.addScaledVector(st.w, h);
+    ["x", "y", "z"].forEach(c => st.rot[c] = Math.max(-0.9, Math.min(0.9, st.rot[c])));
+  };
+  o.solid = k => {
+    const H = o.center(), r = k.clone().sub(H), dist = r.length();
+    if (dist >= o.R) return { k, depth: 0 };
+    return { k: H.addScaledVector(r.normalize(), o.R - Math.min(o.sink, (o.R - dist) * 0.3)), depth: o.R - dist };
+  };
+  o.info = () => Math.round(st.d.length() * 100) + " см / " + Math.round(st.rot.length() / RAD) + "°";
+  return o;
+}
+
+// суперник: голова на пружній шиї
+const TG = {};
+TG.opp = springSphere({ name: "Суперник", R: HEAD_R, M: 5, K: 900, C: 45, I: 0.03, RK: 55, RC: 2.4, KC: 6000, DC: 90, MU: 0.4, sink: 0.01,
+  base: () => HEAD0.clone(),
+  show(on) { opp.torso.visible = opp.head.visible = oNeckMesh.visible = on; marks.chin.visible = marks.jaw.visible = on; },
+  draw() {
+    const st = TG.opp.st;
+    opp.head.position.copy(TG.opp.center()); opp.head.quaternion.copy(qFromRot(st.rot));
+    opp.torso.position.copy(st.d).multiplyScalar(0.25);                          // корпус трохи йде за головою
+    setCyl(oNeckMesh, oNeck.clone().add(opp.torso.position), TG.opp.center().addScaledVector(UP, -0.06));
+  } });
+
+// лапа: партнер тримає її перед собою; для прямих — на рівні підборіддя, для хука — розвернута боком
+const mitt = new THREE.Group(); scene.add(mitt);
+const mittPad = new THREE.Mesh(new THREE.CylinderGeometry(0.115, 0.105, 0.07, 32), new THREE.MeshStandardMaterial({ color: 0xc8202a, roughness: 0.5 }));
+mittPad.castShadow = true; mittPad.rotation.z = Math.PI / 2; mitt.add(mittPad);                     // вісь лапи — локальна x
+const mittDot = new THREE.Mesh(new THREE.CircleGeometry(0.035, 24), new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
+mittDot.position.x = -0.036; mittDot.rotation.y = Math.PI / 2; mitt.add(mittDot);
+const holderUp = cyl(0.045, OM.body), holderLo = cyl(0.038, OM.body);
+const N_STR = V(-1, 0, 0), N_HOOK = V(-0.45, -0.1, 0.89).normalize();       // куди дивиться лапа
+const mittW = () => smooth(0.40, 0.46, T) * (1 - smooth(0.64, 0.70, T));   // 0 — під прямий, 1 — під хук
+const mittN = () => N_STR.clone().lerp(N_HOOK, mittW()).normalize();
+TG.mitt = springSphere({ name: "Лапа", R: 0.09, M: 2.5, K: 1800, C: 60, I: 0.01, RK: 20, RC: 0.9, KC: 5000, DC: 80, MU: 0.3, sink: 0.02,
+  base() {
+    const face = CHIN.clone().lerp(JAW, mittW());
+    return face.addScaledVector(mittN(), -0.09);
+  },
+  show(on) {
+    mitt.visible = holderUp.visible = holderLo.visible = on;
+    if (on) { opp.torso.visible = opp.head.visible = oNeckMesh.visible = true; marks.chin.visible = marks.jaw.visible = false; }
+  },
+  draw() {
+    const st = TG.mitt.st, n = mittN(), c = TG.mitt.center();
+    mitt.position.copy(c).addScaledVector(n, 0.09 - 0.035);
+    mitt.quaternion.copy(qFromRot(st.rot)).multiply(new THREE.Quaternion().setFromUnitVectors(V(-1, 0, 0), n));
+    opp.torso.position.set(0, 0, 0);
+    opp.head.position.copy(HEAD0).add(V(0.20, 0.05, 0)); opp.head.quaternion.identity();
+    setCyl(oNeckMesh, oNeck, opp.head.position.clone().addScaledVector(UP, -0.06));
+    const sh = V(0.70, 1.33, 0.10), back = mitt.position.clone().addScaledVector(n, 0.05);
+    const a = ik(sh, back, 0.29, 0.27, V(0.3, -1, 0.4));
+    setCyl(holderUp, sh, a.mid); setCyl(holderLo, a.mid, a.end);
+  } });
+
+// груша: 55 кг на ланцюгу, передня поверхня — на рівні підборіддя
+const BAG_R = 0.17, BAG_H = 1.0, BAG_M = 55, ROPE = 1.10;
+const PIVOT = V(CHIN.x + BAG_R, 2.45, -0.05);
+const bagG = new THREE.Group(); bagG.position.copy(PIVOT); scene.add(bagG);
+const bagMesh = new THREE.Mesh(new THREE.CylinderGeometry(BAG_R, BAG_R, BAG_H, 40), new THREE.MeshStandardMaterial({ color: 0x7a2a24, roughness: 0.8 }));
+bagMesh.position.y = -ROPE; bagMesh.castShadow = true; bagG.add(bagMesh);
+const seam = new THREE.Mesh(new THREE.BoxGeometry(0.01, BAG_H * 0.98, 0.012), new THREE.MeshStandardMaterial({ color: 0x3a1210 }));
+seam.position.set(-BAG_R, -ROPE, 0); bagG.add(seam);                                             // шов — видно оберт
+const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, ROPE - BAG_H / 2, 6), mat(0x999999));
+chain.position.y = -(ROPE - BAG_H / 2) / 2; bagG.add(chain);
+const ring = new THREE.Mesh(new THREE.TorusGeometry(BAG_R + 0.004, 0.007, 8, 48), new THREE.MeshBasicMaterial({ color: 0xffd23f }));
+ring.rotation.x = Math.PI / 2; ring.position.y = CHIN.y - PIVOT.y; bagG.add(ring);
+const bag = { u: V(0, 0, 0), v: V(0, 0, 0), spin: 0, w: 0 };
+function bagAxis() {
+  const h = Math.sqrt(Math.max(0.01, ROPE * ROPE - bag.u.lengthSq()));
+  const C = PIVOT.clone().add(V(bag.u.x, -h, bag.u.z));
+  return { C, d: C.clone().sub(PIVOT).normalize() };
+}
+function bagNear(k) {
+  const { C, d } = bagAxis(), along = k.clone().sub(C).dot(d);
+  if (Math.abs(along) > BAG_H / 2) return null;
+  const Q = C.clone().addScaledVector(d, along), r = k.clone().sub(Q), dist = r.length();
+  return dist < BAG_R && dist > 1e-6 ? { C, Q, n: r.divideScalar(dist), depth: BAG_R - dist } : null;
+}
+TG.bag = { name: "Груша",
+  reset() { bag.u.set(0, 0, 0); bag.v.set(0, 0, 0); bag.spin = 0; bag.w = 0; },
+  contact(k, vel) {
+    const c = bagNear(k); if (!c) return null;
+    const vn = vel.dot(c.n), Fn = Math.max(0, 3000 * c.depth - 50 * vn), F = c.n.clone().multiplyScalar(-Fn);
+    const vt = vel.clone().addScaledVector(c.n, -vn);
+    if (vt.length() > 1e-3) F.addScaledVector(vt.normalize(), 0.7 * Fn);
+    return { F, at: c.Q.clone().addScaledVector(c.n, BAG_R), H: c.C, Fn };
+  },
+  step(h, F, at, C) {
+    const Fh = V(F ? F.x : 0, 0, F ? F.z : 0);
+    const acc = bag.u.clone().multiplyScalar(-9.81 / ROPE).addScaledVector(bag.v, -0.35).addScaledVector(Fh, 1 / BAG_M);
+    bag.v.addScaledVector(acc, h); bag.u.addScaledVector(bag.v, h);
+    if (bag.u.length() > 0.6) bag.u.setLength(0.6);
+    const I = 0.5 * BAG_M * BAG_R * BAG_R, tq = F ? at.clone().sub(C).cross(F).y : 0;
+    bag.w += (tq / I - 1.0 * bag.w) * h; bag.spin += bag.w * h;
+  },
+  solid(k) {
+    const c = bagNear(k); if (!c) return { k, depth: 0 };
+    return { k: c.Q.addScaledVector(c.n, BAG_R - Math.min(0.035, c.depth * 0.5)), depth: c.depth };   // груша м'яка: до 3,5 см
+  },
+  show(on) { bagG.visible = on; if (on) { opp.torso.visible = opp.head.visible = oNeckMesh.visible = false; } },
+  draw() {
+    const { d } = bagAxis();
+    bagG.quaternion.copy(new THREE.Quaternion().setFromUnitVectors(V(0, -1, 0), d)).multiply(new THREE.Quaternion().setFromAxisAngle(UP, bag.spin));
+  },
+  info: () => bag.v.length().toFixed(2) + " м/с / " + Math.round(bag.spin / RAD) + "°" };
+
+let tgt = TG.opp;
+function setTarget(name) {
+  tgt = TG[name];
+  Object.values(TG).forEach(o => o.show(false)); tgt.show(true);
+  document.querySelectorAll("[data-tg]").forEach(b => b.classList.toggle("on", b.dataset.tg === name));
+  $("s-tgt").textContent = { opp: "Голова суперника: зсув / поворот", mitt: "Лапа: зсув / поворот", bag: "Груша: швидкість / оберт" }[name];
+  headReset();
+}
+function headReset() { Object.values(TG).forEach(o => o.reset()); prevK = null; touching = { R: false, L: false }; }
+
+// ---------- відчуття удару: стоп-кадр, трус камери, спалах, звук ----------
+let hitStop = 0, shake = 0, peakF = 0, touching = { R: false, L: false }, sound = true, actx = null;
+const flashes = [];
+function flashAt(p, power) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.03, 16, 10), new THREE.MeshBasicMaterial({ color: 0xfff1b0, transparent: true, opacity: 0.9 }));
+  m.position.copy(p); scene.add(m); flashes.push({ m, t: 0, power });
+}
+function updateFlashes(dt) {
+  for (let i = flashes.length - 1; i >= 0; i--) {
+    const f = flashes[i]; f.t += dt;
+    const k = f.t / 0.28; f.m.scale.setScalar(1 + k * 4 * f.power); f.m.material.opacity = Math.max(0, 0.9 * (1 - k));
+    if (k >= 1) { scene.remove(f.m); flashes.splice(i, 1); }
+  }
+}
+function thump(power) {
+  if (!sound || !actx) return;
+  const t = actx.currentTime, g = actx.createGain(), o = actx.createOscillator();
+  o.type = "sine"; o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(45, t + 0.12);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.6 * power + 0.05, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+  o.connect(g).connect(actx.destination); o.start(t); o.stop(t + 0.2);
+  const len = Math.floor(actx.sampleRate * 0.05), buf = actx.createBuffer(1, len, actx.sampleRate), ch = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) ch[i] = (Math.random() * 2 - 1) * (1 - i / len);
+  const src = actx.createBufferSource(), bp = actx.createBiquadFilter(), g2 = actx.createGain();
+  src.buffer = buf; bp.type = "bandpass"; bp.frequency.value = 900; g2.gain.value = 0.35 * power + 0.05;
+  src.connect(bp).connect(g2).connect(actx.destination); src.start(t);
+}
+function audioOn() { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); } catch (e) { actx = null; } }
+
+// ---------- слід кулаків ----------
+const TRAIL = 50;
+function makeTrail(c) {
+  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(TRAIL * 3), 3));
+  const l = new THREE.Line(g, new THREE.LineBasicMaterial({ color: c })); scene.add(l); return { l, pts: [] };
+}
+const trails = { R: makeTrail(0xff9a3c), L: makeTrail(0x4da3ff) };
+function pushTrail(tr, p) {
+  tr.pts.push(p.clone()); if (tr.pts.length > TRAIL) tr.pts.shift();
+  const a = tr.l.geometry.attributes.position;
+  for (let i = 0; i < TRAIL; i++) { const q = tr.pts[Math.min(i, tr.pts.length - 1)]; a.setXYZ(i, q.x, q.y, q.z); }
+  a.needsUpdate = true;
+}
+
+// ---------- стан і UI ----------
+const keys = buildKeys(), vecs = keys.map(keyVec), END = keys[keys.length - 1].t;
+let T = 0, playing = true, loop = true, prevK = null, hitShow = 0, hitTag = "", hitAt = V(0, 0, 0);
+const $ = id => document.getElementById(id);
+$("steps").innerHTML = keys.filter(k => k.say).map(k => `<li data-t="${k.t}">${k.say}</li>`).join("");
+$("time").max = END;
+function restart() { T = 0; headReset(); trails.R.pts = []; trails.L.pts = []; }
+$("play").onclick = () => { audioOn(); playing = !playing; $("play").textContent = playing ? "⏸ Пауза" : "▶ Пуск"; };
+$("restart").onclick = () => { audioOn(); restart(); playing = true; $("play").textContent = "⏸ Пауза"; };
+$("loop").onclick = () => { loop = !loop; $("loop").classList.toggle("on", loop); };
+$("spd").oninput = e => $("spdv").textContent = (+e.target.value).toFixed(2) + "×";
+$("time").oninput = e => { T = +e.target.value; playing = false; $("play").textContent = "▶ Пуск"; headReset(); };
+$("snd").onclick = () => { sound = !sound; $("snd").classList.toggle("on", sound); $("snd").textContent = sound ? "🔊 Звук" : "🔇 Звук"; audioOn(); };
+const CAMS = { side: [[0.0, 1.35, 3.0], [0.05, 1.05, 0]], top: [[0.0, 4.2, 0.35], [0.05, 0.9, 0]],
+  back: [[-2.8, 1.6, 0.6], [0.2, 1.1, 0]], front: [[2.3, 1.6, 1.5], [-0.1, 1.05, 0]], fist: [[0.28, 1.70, 0.45], [0.47, 1.45, -0.04]],
+  opp: [[0.66, 1.55, -0.05], [0.0, 1.35, 0.0]] };
+function setCam(n) { const [p, t] = CAMS[n]; cam.position.set(...p); ctl.target.set(...t); ctl.update(); }
+document.querySelectorAll("[data-cam]").forEach(b => b.onclick = () => setCam(b.dataset.cam));
+document.querySelectorAll("[data-tg]").forEach(b => b.onclick = () => setTarget(b.dataset.tg));
+setTarget("opp");
+setCam("side");
+
+function currentTag(t) { let tag = ""; for (const k of keys) if (k.tag && k.t <= t + 0.03) tag = k.tag; return tag; }
+
+function pose(t, simDt) {
+  const s = sample(t), b = body(s);
+  parts.pelvis.position.copy(b.P); parts.pelvis.rotation.y = s.hip * RAD;
+  const chestC = b.neck.clone().addScaledVector(UP, -0.17);
+  parts.chest.position.copy(chestC); parts.chest.rotation.y = s.chest * RAD;
+  setCyl(parts.spine, b.P, chestC);
+  const headC = b.neck.clone().addScaledVector(UP, 0.15);
+  setCyl(parts.neckB, b.neck, headC); parts.head.position.copy(headC);
+  parts.nose.position.copy(headC).addScaledVector(b.C.F, 0.1);
+
+  // фізика цілі: кісточки обох рук, кроки по 1 мс
+  const want = { R: s.rk, L: s.lk };
+  const hits = { R: null, L: null };
+  if (simDt > 0 && prevK) {
+    const n = Math.max(1, Math.ceil(simDt / 0.001)), h = simDt / n;
+    for (let i = 1; i <= n; i++) {
+      let F = null, at = null, H = null;
+      for (const side of ["R", "L"]) {
+        const k = prevK[side].clone().lerp(want[side], i / n);
+        const vel = want[side].clone().sub(prevK[side]).divideScalar(simDt);
+        const c = tgt.contact(k, vel);
+        if (c) { F = F ? F.add(c.F) : c.F; at = c.at; H = c.H; hits[side] = { c, vel }; peakF = Math.max(peakF, c.Fn); }
+      }
+      tgt.step(h, F, at, H);
+    }
+  } else if (simDt > 0) tgt.step(simDt, null);
+  prevK = { R: want.R.clone(), L: want.L.clone() };
+  tgt.draw();
+  const rs = tgt.solid(s.rk), ls = tgt.solid(s.lk);
+
+  const ra = armTo(b.rS, rs.k, s.rp), la = armTo(b.lS, ls.k, s.lp);
+  setCyl(parts.rUp, b.rS, ra.mid); setCyl(parts.rLo, ra.mid, ra.end);
+  setCyl(parts.lUp, b.lS, la.mid); setCyl(parts.lLo, la.mid, la.end);
+  placeFist(rFist, ra.end, ra.dir, s.rroll, "R"); placeFist(lFist, la.end, la.dir, s.lroll, "L");
+  const touch = { R: !!(rs.depth > 0 || hits.R), L: !!(ls.depth > 0 || hits.L) };
+  glowFist(rFist, touch.R); glowFist(lFist, touch.L);
+  for (const side of ["R", "L"]) {
+    if (touch[side] && !touching[side] && simDt > 0) {                  // початок удару
+      const sp = hits[side] ? hits[side].vel.length() : 3, power = Math.min(1, sp / 6);
+      const kn = (side === "R" ? ra : la).knuckle;
+      hitStop = 0.08; shake = 0.25; flashAt(kn, power); thump(power);
+      hitShow = 0.7; hitTag = currentTag(t); hitAt = kn.clone(); peakF = 0;
+    }
+    touching[side] = touch[side];
+  }
+  const tagNow = currentTag(t);
+  marks.chin.material.color.setHex(touch.R && /прям|джеб/.test(tagNow) ? 0xff4b2b : 0xffd23f);
+  marks.jaw.material.color.setHex(touch.R && /хук/.test(tagNow) ? 0xff4b2b : 0xffd23f);
+
+  const rf = foot(s.ff), lf = foot(s.rf);
+  const rl = ik(b.rH, rf.ankle, LEG[0], LEG[1], rf.D.clone().add(V(0, 0.1, 0))), ll = ik(b.lH, lf.ankle, LEG[0], LEG[1], lf.D.clone().add(V(0, 0.1, 0)));
+  setCyl(parts.rTh, b.rH, rl.mid); setCyl(parts.rSh, rl.mid, rl.end);
+  setCyl(parts.lTh, b.lH, ll.mid); setCyl(parts.lSh, ll.mid, ll.end);
+  setCyl(parts.rFoot, rf.heel, rf.toe); setCyl(parts.lFoot, lf.heel, lf.toe);
+  [b.rS, b.lS, ra.mid, la.mid, b.rH, b.lH, rl.mid, ll.mid, rf.ankle, lf.ankle].forEach((p, i) => parts.joints[i].position.copy(p));
+  pushTrail(trails.R, ra.knuckle); pushTrail(trails.L, la.knuckle);
+
+  $("s-er").textContent = angle(b.rS, ra.mid, ra.end) + "°";
+  $("s-el").textContent = angle(b.lS, la.mid, la.end) + "°";
+  $("s-kn").textContent = angle(b.lH, ll.mid, ll.end) + "°";
+  $("s-rot").textContent = Math.round(s.hip - 45) + "° / " + Math.round(s.chest - 50) + "°";
+  if (peakF > 0) $("s-f").textContent = Math.round(peakF) + " Н (модель)";
+  $("s-head").textContent = tgt.info();
+}
+
+const clock = new THREE.Clock();
+function resize() { const w = view.clientWidth, h = view.clientHeight; renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); }
+addEventListener("resize", resize);
+function frameLoop() {
+  const dt = Math.min(0.05, clock.getDelta());
+  let simDt = 0;
+  hitStop = Math.max(0, hitStop - dt);
+  if (playing && hitStop <= 0) {
+    simDt = dt * +$("spd").value; T += simDt;
+    if (T > END) { if (loop) restart(); else { T = END; } }
+  }
+  pose(T, simDt);
+  $("time").value = T;
+  let cur = null; document.querySelectorAll("#steps li").forEach(li => { if (+li.dataset.t <= T + 1e-6) cur = li; });
+  document.querySelectorAll("#steps li").forEach(li => li.classList.toggle("cur", li === cur));
+  $("phase").textContent = cur ? cur.textContent : "";
+  hitShow = Math.max(0, hitShow - dt);
+  const tag = $("tag");
+  if (hitShow > 0 && hitTag) {
+    const v = hitAt.clone().project(cam);
+    tag.style.display = "block"; tag.textContent = hitTag;
+    tag.style.left = ((v.x + 1) / 2 * view.clientWidth + 12) + "px"; tag.style.top = ((1 - v.y) / 2 * view.clientHeight - 26) + "px";
+  } else tag.style.display = "none";
+  updateFlashes(dt);
+  ctl.update();
+  shake = Math.max(0, shake - dt);
+  const sh = V(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(0.03 * shake / 0.25);
+  cam.position.add(sh); renderer.render(scene, cam); cam.position.sub(sh);
+  requestAnimationFrame(frameLoop);
+}
+resize(); frameLoop();
+</script>
+</body>
+</html>
